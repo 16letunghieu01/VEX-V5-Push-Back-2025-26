@@ -1,0 +1,467 @@
+#include "main.h"
+#include "auton.h"
+#include "lemlib/api.hpp"
+#include "lemlib/chassis/chassis.hpp"
+#include "pros/adi.hpp"
+#include "pros/rtos.hpp"
+#include <cmath>
+
+// External declarations for globals from main.cpp
+extern lemlib::Chassis chassis;
+extern int intakeMode;
+extern pros::adi::Pneumatics stage;
+extern pros::adi::Pneumatics descoreCenter;
+extern pros::adi::Pneumatics counterLoader;
+extern pros::adi::Pneumatics descoreLeft;
+extern pros::adi::Pneumatics odoLift;
+
+// Function to set stage (declared in main.cpp)
+// extern void // setStage(int stageMode);
+
+// ASSET declarations
+ASSET(pathdescore1_txt);
+ASSET(pathdescore2_txt);
+ASSET(pathdescore3_txt);
+ASSET(pathdescoreright_txt);
+ASSET(pathdescorecbd_txt);
+
+// ========= LEFT DESCORERE 7 BLOCK =========
+void leftdescore7bloc() {
+    descoreLeft.set_value(true);
+    // // setStage(2); 
+    intakeMode = 3;
+    chassis.setPose(49.2, -10, 247.334);
+    chassis.moveToPoint(25.2, -20, 700, {}, true);
+    pros::delay(500);
+    counterLoader.set_value(true);
+    chassis.turnToHeading(145, 550, {}, false);
+    chassis.moveToPoint(45, -47.5 , 1000, {}, false);
+    chassis.turnToHeading(90, 550, {}, true);
+    chassis.moveToPoint(67, -47.5, 1100, {}, false);
+    pros::delay(700);
+    intakeMode = 0;
+    chassis.moveToPoint(29, -47.5, 2300, {.forwards = false, .minSpeed = 100});
+    pros::delay(550);
+    intakeMode = 2;
+    pros::delay(200);
+    // pros::delay(700);
+    // // setStage(4);
+    intakeMode = 4;
+    pros::delay(2200);
+    intakeMode = 0;
+
+    chassis.setPose(29.2, -48, chassis.getPose().theta);
+    counterLoader.set_value(false);
+    
+    chassis.moveToPoint(40, -48, 700, {}, false);
+    chassis.turnToHeading(35, 300, {}, false);
+    chassis.follow(pathdescore2_txt, 9, 3800, false, true);
+    pros::delay(600);
+    descoreLeft.set_value(false);
+    
+    pros::delay(2000);
+    // chassis.moveToPoint(chassis.getPose().x, chassis.getPose().y, 6000, {.minSpeed = 120}, false);
+    chassis.turnToHeading(80, 1000, {.minSpeed = 120}, false);
+    chassis.moveToPoint(chassis.getPose().x, chassis.getPose().y, 10000, {.minSpeed = 120}, false);
+}
+
+void leftfastdescore() {
+    // setStage(3); 
+    intakeMode = 1;
+    chassis.setPose(49.2, -10, 247.334);
+    chassis.moveToPoint(25.2, -20, 700, {}, true);
+    pros::delay(500);
+    counterLoader.set_value(true);
+    chassis.turnToHeading(135, 650, {}, false);
+    chassis.moveToPoint(41, -45.5, 800, {}, false);
+    chassis.turnToHeading(90, 250, {}, true);
+    chassis.moveToPoint(23, -47.75, 2300, {.forwards = false, .minSpeed = 90});
+    pros::delay(600);
+    pros::delay(150);
+    // setStage(2);
+    intakeMode = 1;
+    pros::delay(1500);
+
+    chassis.setPose(29.5, -47.15, 90);
+    
+    chassis.moveToPoint(40, -47.15, 800, {}, false);
+    chassis.turnToHeading(35, 500, {}, false);
+    chassis.follow(pathdescore2_txt, 9, 3000, false, true);
+    pros::delay(800);
+    descoreLeft.set_value(false);
+    
+    pros::delay(1000);
+    chassis.moveToPoint((chassis.getPose().x), chassis.getPose().y, 6000, {}, false);
+    chassis.turnToHeading(60, 500, {.minSpeed = 120},false);
+}
+
+// ========= LEFT CENTER DESCORERE =========
+void leftcenterdescore() {
+    descoreLeft.set_value(true);
+    // setStage(2); 
+    intakeMode = 1;
+    chassis.setPose(49.2, -10, 247.334);
+    chassis.moveToPoint(25.2, -20, 700, {}, true);
+    pros::delay(500);
+    counterLoader.set_value(true);
+    pros::delay(600);
+    counterLoader.set_value(false);
+
+    // chassis.moveToPose(7, -43, 206, 1700, {}, false);
+    // chassis.moveToPoint(25.2, -20, 1500, {.forwards = false}, false);
+    pros::delay(300);
+    intakeMode = 0;
+    pros::delay(200);
+    // setStage(0);
+    // chassis.moveToPose(2, -13, 135, 2800, {.forwards = false}, false);
+    // chassis.moveToPose(0, -7, 135, 2000, {.forwards = false}, false);
+    pros::delay(200);
+
+    // chassis.moveToPose(5, -7, 135, 2000, {.forwards = false}, false);
+    chassis.moveToPoint(25.75, -25.75, 1000, {.forwards = false}, false);
+    chassis.turnToHeading(135, 900, {}, false);
+    chassis.moveToPoint(9, -9, 1000, {.forwards = false}, false);
+    // // setStage(0);
+    intakeMode = 2;
+    pros::delay(200);
+    intakeMode = 1;
+    pros::delay(900);
+    // setStage(2);
+    
+    chassis.turnToHeading(145, 650, {}, false);
+
+    pros::Task intakeSequenceTask([&]() {
+        counterLoader.set_value(true);
+        intakeMode = 2;
+        pros::delay(200);
+        // // setStage(3);
+        pros::delay(250);
+        intakeMode = 1;
+    });
+
+    chassis.moveToPoint(45, -47.5, 1100, {}, false);
+
+    chassis.turnToHeading(90, 450, {}, true);
+    chassis.moveToPoint(64, -47.5, 1100, {}, false);
+    pros::delay(650);
+    intakeMode = 0;
+    // chassis.moveToPoint(23, -47.3, 2300, {.forwards = false, .minSpeed = 90});
+    chassis.moveToPoint(23, -47.5, 2300, {.forwards = false,.minSpeed = 90});
+    pros::delay(600);
+    intakeMode = 2;
+    pros::delay(200);
+    // setStage(1);
+    intakeMode = 1;
+    pros::delay(2000);
+    intakeMode = 0;
+
+    chassis.setPose(29.25, -48, 90);
+    counterLoader.set_value(false);
+    // descoreLeft.set_value(true);
+
+
+    chassis.moveToPoint(40, -48, 600, {}, false);
+    chassis.turnToHeading(35, 300, {}, false);
+    chassis.follow(pathdescore2_txt, 9, 3500, false, true);
+    pros::delay(600);
+    descoreLeft.set_value(false);
+    
+    pros::delay(2000);
+    chassis.turnToHeading(80, 1000, {.minSpeed = 120}, false);
+    chassis.moveToPoint(chassis.getPose().x, chassis.getPose().y, 10000, {.minSpeed = 120}, false);
+}   
+
+void leftlongcenter() {
+    // setStage(3); 
+    intakeMode = 1;
+    chassis.setPose(48.411, -10.375, 247.334);
+    chassis.moveToPoint(25.364, -20, 700, {}, true);
+    pros::delay(500);
+    counterLoader.set_value(true);
+    chassis.turnToHeading(135, 650, {}, false);
+    chassis.moveToPoint(41.5, -45.5, 800, {}, false);
+    chassis.turnToHeading(90, 250, {}, true);
+    chassis.moveToPoint(58, -49, 1000, {}, false);
+    pros::delay(400);
+    intakeMode = 0;
+    chassis.moveToPoint(23, -47.75, 2300, {.forwards = false, .minSpeed = 90});
+    pros::delay(600);
+    intakeMode = 2;
+    pros::delay(150);
+    // setStage(2);
+    intakeMode = 1;
+    pros::delay(500);
+    intakeMode = 0;
+
+    chassis.setPose(29.5, -47.15, 90);
+    chassis.moveToPoint(47, -47.15, 800, {}, false);
+    chassis.turnToHeading(140, 500, {}, false);
+    intakeMode = 0;
+    // setStage(0);
+    chassis.moveToPose(8.5, -8.5, 135, 2000, {.forwards = false}, false);
+    intakeMode = 1;
+}
+
+// ========= RIGHT DESCORERE 7 BLOCK =========
+void rightdescore7bloc() {
+    descoreLeft.set_value(true);
+    // // setStage(3); 
+    intakeMode = 3;
+    chassis.setPose(49.2, 10, 292.667);
+    chassis.moveToPoint(25.2, 20, 700, {}, true);
+    pros::delay(500);
+    counterLoader.set_value(true);
+    chassis.turnToHeading(35, 550, {}, false);
+    chassis.moveToPoint(45, 47.5, 800, {}, false);
+    chassis.turnToHeading(90, 250, {}, true);
+    chassis.moveToPoint(67, 47.5, 1100, {}, false);
+    chassis.turnToHeading(90, 250, {}, true);
+    pros::delay(400);
+    intakeMode = 0;
+    chassis.moveToPoint(23, 47.5, 2300, {.forwards = false, .minSpeed = 100});
+    pros::delay(600);
+    intakeMode = 2;
+    pros::delay(150);
+    // // setStage(2);
+    intakeMode = 4;
+    pros::delay(2200);
+    intakeMode = 0;
+
+    chassis.setPose(29.25, 48, chassis.getPose().theta);
+    counterLoader.set_value(false);
+
+    chassis.moveToPoint(40, 47.15, 700, {}, false);
+    chassis.turnToHeading(40, 300, {}, false);
+    chassis.moveToPoint(30, 36, 900, {.forwards = false}, false);
+    chassis.turnToHeading(90, 400, {}, true);
+    descoreLeft.set_value(false);
+    chassis.moveToPoint(12, 36, 800, {.forwards = false}, false);
+    // chassis.moveToPoint(chassis.getPose().x, chassis.getPose().y, 6000, {.minSpeed = 120}, false);
+    chassis.turnToHeading(80, 5000, {.minSpeed = 120}, false);
+}
+
+void rightdescore9bloc() {
+    // setStage(3); 
+    intakeMode = 1;
+    chassis.setPose(48.411, 10.375, 292.667);
+    chassis.moveToPoint(25.364, 20, 700, {}, true);
+    pros::delay(500);
+    counterLoader.set_value(true);
+    pros::delay(300);
+    counterLoader.set_value(false);
+    chassis.moveToPose(7, 43, 334, 1800, {}, false);
+    chassis.moveToPoint(21, 21, 1200, {.forwards = false}, true);
+
+    chassis.turnToHeading(35, 650, {}, false);
+    chassis.moveToPoint(41.5, 45.5, 800, {}, false);
+    chassis.turnToHeading(90, 250, {}, true);
+    chassis.moveToPoint(23, 47.75, 2800, {.forwards = false, .minSpeed = 90});
+    pros::delay(800);
+    // setStage(2);
+    pros::delay(1800);
+    counterLoader.set_value(true);
+    intakeMode = 2;
+    pros::delay(300);
+    // setStage(3);
+    pros::delay(500);
+    intakeMode = 1;
+    chassis.moveToPoint(57, 48, 1600, {}, false);
+    pros::delay(200);
+    chassis.moveToPoint(23, 47.75, 2300, {.forwards = false, .minSpeed = 90});
+    // setStage(2);
+    intakeMode = 1;
+    pros::delay(2500);
+    intakeMode = 0;
+
+    chassis.setPose(29.25, 47.15, 90);
+    chassis.moveToPoint(chassis.getPose().x, chassis.getPose().y, 6000, {}, false);
+}
+
+// Helper functions
+void goStraight(int speed, int duration) {
+    unsigned long startTime = pros::millis();
+    while (pros::millis() - startTime < duration) {
+        chassis.tank(speed, speed, true);
+        pros::delay(10);
+    }
+    chassis.tank(0, 0, true);
+}
+
+void reverse(int speed, int duration) {
+    unsigned long startTime = pros::millis();
+    while (pros::millis() - startTime < duration) {
+        chassis.tank(speed, speed, true);
+        pros::delay(10);
+    }
+    chassis.tank(0, 0, true);
+}
+
+void wiggle(int speed, int duration) {
+    unsigned long startTime = pros::millis();
+    bool wiggleLeft = true;
+    while (pros::millis() - startTime < duration) {
+        if (wiggleLeft) {
+            chassis.tank(-speed, speed, true);
+        } else {
+            chassis.tank(speed, -speed, true);
+        }
+        wiggleLeft = !wiggleLeft;
+        pros::delay(150);
+    }
+    chassis.tank(0, 0, true);
+}
+
+void skillz() {
+    // setStage(2); 
+    chassis.setPose(-45, 0, 270);
+
+    // odoLift.set_value(true);
+    // goStraight(100, 800);
+    // wiggle(50, 1500);
+    // goStraight(80, 800);
+    // wiggle(50, 1500);
+    // goStraight(80, 800);
+    // chassis.turnToHeading(270, 1500, {}, false);
+    // counterLoader.set_value(true);
+    // reverse(-60, 1000);
+    // counterLoader.set_value(false);
+    // odoLift.set_value(false);
+    // goStraight(30, 3500);
+    // chassis.setPose(-45, 0, chassis.getPose().theta);
+
+
+    // chassis.moveToPoint(-18.5, 0, 1000, {.forwards = false}, false);
+    // chassis.turnToHeading(0, 800, {}, true);
+    // chassis.moveToPoint(-18.5, 19, 1000, {}, false);
+    chassis.moveToPoint(-23.5, 0, 1000, {.forwards = false}, false);
+    chassis.turnToHeading(0, 800, {}, false);
+    chassis.moveToPoint(-23.5, 19, 1000, {}, true);
+    pros::delay(350);
+    counterLoader.set_value(true);
+    pros::delay(200);
+
+
+    // intakeMode = 0;
+    chassis.turnToHeading(315, 1000, {}, false);
+
+    // counterLoader.set_value(true);
+    
+    // chassis.moveToPoint(-29, 29, 1000, {}, true);
+    // chassis.turnToHeading(315, 1000, {}, false);
+    chassis.moveToPose(-6, 7, 315, 1500, {.forwards = false}, false);
+    intakeMode = 2;
+    pros::delay(250);
+    // setStage(0);
+    // counterLoader.set_value(true);
+    // pros::delay(100);
+    // intakeMode = 2;
+    // pros::delay(200);
+    intakeMode = 1;
+
+    pros::delay(3000);
+
+
+    // setStage(2);
+    chassis.moveToPoint(-46, 47.5, 2000, {}, false);
+    chassis.turnToHeading(270, 800, {}, false);
+
+
+    // chassis.moveToPoint(-59.35, 47, 2000, {.maxSpeed = 70}, false);
+    chassis.moveToPose(-62, 47.5, 270, 1500, {}, false);
+    chassis.moveToPoint(-57, 47.5, 400, {}, false);
+    chassis.moveToPoint(-62, 47.5, 1500, {}, false);
+    // wiggle(50, 1000);
+    chassis.turnToHeading(270, 400, {}, false);
+    // intakeMode = 0;
+    // setStage(2);
+
+
+
+    // 
+    chassis.moveToPoint(-45, 47.5, 1200, {.forwards = false}, false);
+    
+    counterLoader.set_value(false);
+    // chassis.turnToHeading(220, 500, {}, false);
+    // chassis.swingToHeading(240, DriveSide::LEFT, 1000);
+    // chassis.turnToHeading(48, 1000, {}, false);
+    chassis.turnToHeading(140, 1000, {}, false);
+    // chassis.moveToPoint(-29, 59.5, 1000, {.forwards = false}, false);
+    chassis.moveToPoint(-32, 37, 1500, {}, false);
+    // chassis.swingToHeading(90, DriveSide::LEFT, 1000);
+    chassis.turnToHeading(90, 1000, {}, false);
+
+    chassis.moveToPoint(45, 37 , 1500, {}, false);
+    chassis.turnToHeading(131, 800, {}, false);
+
+
+    chassis.moveToPose(23, 49, 90, 1500, {.forwards = false}, false);
+    chassis.turnToHeading(90, 1300, {}, false);
+
+    // setStage(1);
+    intakeMode = 1;
+    counterLoader.set_value(true);
+    pros::delay(1000);
+
+    
+    chassis.moveToPose(65, 48, 90, 3000, {}, false);
+    // wiggle(50, 1000);
+    // pros::delay(1000);
+    chassis.moveToPoint(25, 48, 1500, {.forwards = false}, false);
+    intakeMode = 2;
+    pros::delay(250);
+    // setStage(1);
+    pros::delay(3000);
+    chassis.setPose(29.2, 48, chassis.getPose().theta);
+    counterLoader.set_value(false);
+    // setStage(2);
+
+    chassis.moveToPoint(23.5, -19, 3000);
+    pros::delay(2000);
+    counterLoader.set_value(true);
+    
+    chassis.turnToHeading(145, 550, {}, false);
+    chassis.moveToPoint(45, -47.5 , 800, {}, false);
+    chassis.turnToHeading(90, 250, {}, true);
+    chassis.moveToPoint(60, -47.5, 2000, {}, false);
+    pros::delay(1000);
+    // intakeMode = 0;
+
+
+    // chassis.moveToPoint(29, -47.5, 2300, {.forwards = false, .minSpeed = 100});
+    // pros::delay(700);
+    // // setStage(1);
+    // pros::delay(3000);
+    // intakeMode = 0;
+
+
+
+    // chassis.setPose(29.25, -48, 90);
+    counterLoader.set_value(false);
+
+    // setStage(2);
+    chassis.moveToPoint(-45, 47.5, 1200, {.forwards = false}, false);
+    
+    counterLoader.set_value(false);
+    // chassis.turnToHeading(220, 500, {}, false);
+    // chassis.swingToHeading(240, DriveSide::LEFT, 1000);
+    // chassis.turnToHeading(48, 1000, {}, false);
+    chassis.turnToHeading(320, 1000, {}, false);
+    // chassis.moveToPoint(-29, 59.5, 1000, {.forwards = false}, false);
+    chassis.moveToPoint(-32, -37, 1500, {}, false);
+    // chassis.swingToHeading(90, DriveSide::LEFT, 1000);
+    chassis.turnToHeading(90, 1000, {}, false);
+
+    chassis.moveToPoint(-45, -37 , 1500, {}, false);
+    chassis.turnToHeading(221, 800, {}, false);
+
+
+    chassis.moveToPoint(-23, -48.25, 4000, {.forwards = false}, false);
+    // setStage(1);
+
+}
+
+void testodo11() {
+    chassis.setPose(0, 0, 270);
+    chassis.moveToPoint(0, 24, 15000, {}, false);
+    // chassis.moveToPoint(chassis.getPose().x, chassis.getPose().y, 15000, {}, false);
+}

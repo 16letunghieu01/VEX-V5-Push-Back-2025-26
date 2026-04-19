@@ -1,0 +1,334 @@
+#include "main.h"
+#include "auton.h"
+#include "auton_selector.h"
+#include "lemlib/api.hpp" 
+#include "lemlib/chassis/chassis.hpp"
+#include "pros/adi.hpp"
+#include "pros/distance.hpp"
+#include "pros/imu.hpp"
+#include "pros/motor_group.hpp"
+#include "pros/motors.hpp"
+#include "pros/rotation.hpp"
+#include "pros/rtos.hpp"
+#include "pros/apix.h"  
+#include <future>
+#include <cmath>
+#include <cstdio>
+
+
+// ========== GLOBAL STATE ==========
+bool calibrate = false;
+
+// === Motors ===
+pros::MotorGroup leftMotors({-12, -13, -14}, pros::MotorGearset::blue);
+pros::MotorGroup rightMotors({17, 18, 19}, pros::MotorGearset::blue);
+pros::Motor motorTrai(7, pros::MotorGearset::blue);
+pros::Motor motorPhai(-9, pros::MotorGearset::blue);
+
+// === Pneumatics ===
+pros::adi::Pneumatics stage('C', false); // Stage (from up)
+pros::adi::Pneumatics descoreCenter('E', false); // DescoreCenter
+pros::adi::Pneumatics counterLoader('B', false);
+pros::adi::Pneumatics descoreLeft('A', false);
+// pros::adi::Pneumatics odoLift('H', false);
+pros::adi::Pneumatics blockblock('F', true);
+
+// === Sensors ===
+pros::Rotation horizontal_encoder(-8);
+pros::Rotation vertical_encoder(-16);
+pros::Imu imu(10);
+pros::Optical colorSensor(19);
+pros::Distance distance_sensor(14); 
+
+// === Tracking Wheels ===
+lemlib::TrackingWheel horizontal_tracking_wheel(&horizontal_encoder, lemlib::Omniwheel::NEW_2, 1.968);
+lemlib::TrackingWheel vertical_tracking_wheel(&vertical_encoder, lemlib::Omniwheel::NEW_2, -0.51);
+
+// === Odom sensors ===
+lemlib::OdomSensors sensors(&vertical_tracking_wheel, nullptr, &horizontal_tracking_wheel, nullptr, &imu);
+
+// === Drivetrain ===
+lemlib::Drivetrain drivetrain(&leftMotors, &rightMotors, 12.9, lemlib::Omniwheel::NEW_325, 450, 2);
+
+// === PID Controllers ===
+lemlib::ControllerSettings lateral_controller(12, 0, 59, 0, 0, 0, 0, 0, 0); 
+lemlib::ControllerSettings angular_controller(6, 0, 50.5, 0, 0, 0, 0, 0, 0); 
+
+// === Input Curves ===
+// ExpoDriveCurve(deadband, minOutput, curve)
+// - deadband: vùng input được coi là 0 (deadzone)
+// - minOutput: output tối thiểu khi input vượt qua deadband
+// - curve: độ cong (1.0 = linear, >1.0 = cong hơn, input nhỏ sẽ chậm hơn)
+// Giá trị cao hơn (1.1-1.2) sẽ làm input nhỏ chậm hơn đáng kể
+// lemlib::ExpoDriveCurve throttle_curve(3, 5, 1.12); // Tăng từ 1.019 lên 1.12 để chậm hơn ở input nhỏ
+// lemlib::ExpoDriveCurve steer_curve(3, 5, 1.12); // Đồng bộ với throttle, tăng từ 1.05 lên 1.12
+
+// old settings:
+// 3, 10, 1.019
+// 20, 5, 1.05
+
+// === Chassis ===
+// lemlib::Chassis chassis(drivetrain, lateral_controller, angular_controller, sensors, &throttle_curve, &steer_curve);
+lemlib::Chassis chassis(drivetrain, lateral_controller, angular_controller, sensors);
+
+// === Controller ===
+pros::Controller controller(pros::E_CONTROLLER_MASTER);
+// pros::Distance distance_sensor(15);
+
+// ========== AUTON SELECTOR ==========
+// Autonomous routines are now in src/auton.cpp
+// Selector uses category-based selection: Color -> Side -> Auton
+
+// Create auton selector instance (no parameters needed, routines organized internally)
+AutonSelector auton_selector;
+
+// ========== MANUAL AUTON SELECTION ==========
+// Set this to nullptr to use selector, or set to a function pointer to override selector
+// Example: manualAutonFunction = &leftcenterdescore;
+// Available autons:
+// - &leftdescore7bloc
+// - &leftfastdescore
+// - &leftcenterdescore
+// - &leftlongcenter
+// - &rightdescore7bloc
+// - &rightdescore9bloc
+// - &skillz
+// - &testodo11
+AutonSelector::routine_action_t manualAutonFunction = nullptr; // nullptr = use selector, or set to function pointer
+void disabled() {
+    // Update selector while disabled
+    while (pros::competition::is_disabled()) {
+        auton_selector.update();
+        pros::delay(20);
+    }
+}
+
+void competition_initialize() {
+    // Initialize selector for competition
+    auton_selector.initialize();
+    while (pros::competition::is_disabled()) {
+        auton_selector.update();
+        pros::delay(20);
+    }
+}
+
+
+// ========== HELPER STATES ==========
+bool isSkillMode = false; 
+bool boostMode = false;
+
+bool stageState = false;
+bool gripperState = false;
+bool counterLoaderState = false;
+bool punchGoalState = false;
+bool descoreLeftState = false;
+bool descoreCenterState = false;
+bool odoLiftState = false;
+bool doubleParkState = false;
+bool sequenceState = false;
+bool colorFilterEnabled = false;
+int colorToReject = 0;
+bool loaderMode = false;
+double speedAbove;
+double speedUnder;
+bool colorSortEnabled = false;
+bool useManualColorSort = true;
+AutonSelector::Color manualColorToSort = AutonSelector::Color::RED;
+int intakeMode = 0;
+int current_auton = 0;
+bool odoLifted = false;
+int currentStageMode = -1;
+bool motorTraiActive = false;
+
+// ========== TASKS ==========
+void intakeTaskFn() { 
+    while (true) {
+        int speed = 127;
+        // if (isSkillMode && (boostMode || currentStageMode == 0)) {
+        //     speed = 85;
+        // }
+        
+        if (intakeMode == 1) {
+            motorTrai.move(speed);
+            motorPhai.move(speed);
+        } else if (intakeMode == 2) {
+            motorTrai.move(-speed);
+            motorPhai.move(speed);
+        } else {
+            // Stage buttons hold: motorPhai + motorTrai
+            bool r1Held = controller.get_digital(pros::E_CONTROLLER_DIGITAL_R1);
+            bool r2Held = controller.get_digital(pros::E_CONTROLLER_DIGITAL_R2);
+            bool yHeld = controller.get_digital(pros::E_CONTROLLER_DIGITAL_Y);
+            
+            if (r1Held) {
+                motorTrai.move(speed);
+                motorPhai.move(speed); // Stage 2: long
+            } else if (r2Held) {
+                motorTrai.move(speed);
+                motorPhai.move(speed); // Stage 1: center
+            } else if (yHeld) {
+                motorTrai.move(-speed);
+                motorPhai.move(-speed);
+            } else {
+                if (motorTraiActive) { // bam l1
+                    // blockblock.set_value(true);
+                    motorTrai.move(speed);
+                    motorPhai.move(speed);
+                } else {
+                    blockblock.set_value(true);
+                    motorTrai.move(0);
+                    motorPhai.move(0);
+                }
+            }
+        }
+        
+        pros::delay(25);
+    }
+}
+
+pros::Task intakeTask(intakeTaskFn); 
+
+
+void handleDrive() {
+    // Đọc input từ controller
+    int leftY = controller.get_analog(pros::E_CONTROLLER_ANALOG_LEFT_Y);
+    int rightX = controller.get_analog(pros::E_CONTROLLER_ANALOG_RIGHT_X);
+
+    const int forwardDeadzone = 5;
+    const int turnDeadzone = 5; 
+    if (abs(leftY) < forwardDeadzone) leftY = 0;
+    if (abs(rightX) < turnDeadzone) rightX = 0;
+    
+    if (isSkillMode && boostMode) {
+        leftY = (int)(leftY * 0.65);
+        rightX = (int)(rightX * 0.65);
+    }
+    
+    chassis.arcade(leftY, rightX, false, 0.35);
+}
+
+void handleManualPneumatics() {
+    // L1: toggle motorTrai (chỉ toggle khi nhấn 1 lần) + bật blockblock
+    static bool lastL1State = false;
+    bool l1Current = controller.get_digital(pros::E_CONTROLLER_DIGITAL_L1);
+    if (l1Current && !lastL1State) {
+        motorTraiActive = !motorTraiActive;
+        blockblock.set_value(true);
+    }
+    lastL1State = l1Current;
+    
+    // Khi thả R1/R2/Y: tắt motorTrai (reset motorTraiActive)
+    static bool lastR1State = false, lastR2State = false, lastYState = false;
+    bool r1Current = controller.get_digital(pros::E_CONTROLLER_DIGITAL_R1);
+    bool r2Current = controller.get_digital(pros::E_CONTROLLER_DIGITAL_R2);
+    bool yCurrent = controller.get_digital(pros::E_CONTROLLER_DIGITAL_Y);
+    
+    if ((lastR1State && !r1Current) || (lastR2State && !r2Current) || (lastYState && !yCurrent)) {
+        motorTraiActive = false;
+    }
+    
+    // R1: giữ thì tắt blockblock, thả thì bật blockblock
+    if (r1Current) {
+        blockblock.set_value(false);
+    } else if (!r1Current && lastR1State) {
+        blockblock.set_value(true);
+    }
+    
+    // R2: bật pneumatic stage khi giữ, tắt khi thả
+    if (r2Current && !lastR2State) {
+        stage.set_value(true);
+        blockblock.set_value(true);
+    } else if (!r2Current && lastR2State) {
+        stage.set_value(false);
+        blockblock.set_value(true);
+    }
+    
+    lastR1State = r1Current;
+    lastR2State = r2Current;
+    lastYState = yCurrent;
+    
+    // L2: Left descore
+    if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_L2)) {
+        descoreLeftState = !descoreLeftState;
+        descoreLeft.set_value(descoreLeftState);
+    }
+
+    // B: toggle color sort
+    if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_B)) {
+        descoreCenterState = !descoreCenterState;
+        descoreCenter.set_value(descoreCenterState);
+    }
+
+
+    // UP: toggle odo lift
+    if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_UP)) {
+        odoLiftState = !odoLiftState;  
+        // odoLift.set_value(odoLiftState); 
+    }
+
+    // DOWN, A: toggle double park
+    if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_DOWN) || controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_A)) {
+        counterLoaderState = !counterLoaderState;
+        counterLoader.set_value(counterLoaderState);
+    }
+
+    // LEFT: toggle boost (skill mode only)
+    // if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_LEFT)) {
+    //     if (isSkillMode) {
+    //         boostMode = !boostMode;
+    //         controller.rumble(".");
+    //     }
+    // }
+
+}
+
+void autonomous() {
+    chassis.cancelMotion();
+    auton_selector.show_telemetry();
+    
+    if (manualAutonFunction != nullptr) {
+        manualAutonFunction();
+    } else {
+        auton_selector.run_auton();
+    }
+    // chassis.setPose(0, 0, 0);
+    // chassis.moveToPoint(0, 24, 10000);
+    // chassis.turnToHeading(180, 10000);
+}
+
+void initialize() {
+    chassis.calibrate();
+    colorSensor.set_led_pwm(100);
+
+    // Set brake mode for drivetrain
+    // - pros::E_MOTOR_BRAKE_COAST: Motors coast when stopped (no resistance)
+    // - pros::E_MOTOR_BRAKE_BRAKE: Motors brake when stopped (some resistance)
+    // - pros::E_MOTOR_BRAKE_HOLD: Motors hold positiBRAKEon when stopped (strongest, best for precision)
+    // chassis.setBrakeMode(pros::E_MOTOR_BRAKE_BRAKE); 
+
+    auton_selector.initialize();
+}
+
+
+// ========== OP CONTROL ==========
+void opcontrol() {   
+    // chassis.setPose(45, 0, 270);
+    auton_selector.show_telemetry();
+    
+    int telemetryCounter = 0; 
+
+    while (true) {
+        handleManualPneumatics();
+        handleDrive();
+
+        
+
+        if (telemetryCounter % 4 == 0) {
+            auton_selector.update_telemetry();
+            lv_timer_handler();
+        }
+        telemetryCounter++;
+        
+        pros::delay(25);
+    }
+}
